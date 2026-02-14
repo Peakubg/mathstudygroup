@@ -1211,6 +1211,27 @@ let settings = loadData('settings', {
     notifications: true, contrast: false, motion: false, font: false, performance: false
 });
 
+function applySettings() {
+    const body = document.body;
+    body.className = body.className.replace(/theme-\w+/g, '');
+    body.classList.add(`theme-${settings.theme}`);
+    body.classList.remove('high-contrast', 'reduced-motion', 'font-large', 'performance-mode', 'no-cursor');
+    if (settings.contrast) body.classList.add('high-contrast');
+    if (settings.motion) body.classList.add('reduced-motion');
+    if (settings.font) body.classList.add('font-large');
+    if (settings.performance) body.classList.add('performance-mode');
+    if (!settings.cursor) body.classList.add('no-cursor');
+    applyBackground(settings.background);
+}
+
+function applyBackground(bg) {
+    const el = $('#desktop-bg');
+    el.className = '';
+    el.classList.add('bg-' + bg);
+}
+
+applySettings();
+
 let currentUser = null;
 let achievements = loadData('achievements', []);
 let unlockClicks = 0;
@@ -1337,6 +1358,53 @@ function initDesktop() {
     updateWidgetClock();
     startSystemMonitor();
     cursor.style.display = 'block';
+    
+    // Initialize desktop icons
+    $$('.desktop-icon[data-app]').forEach(icon => {
+        icon.addEventListener('click', () => {
+            openApp(icon.dataset.app);
+        });
+    });
+    
+    // Initialize start menu items
+    $$('.start-item[data-app]').forEach(item => {
+        item.addEventListener('click', () => {
+            openApp(item.dataset.app);
+            startMenu.classList.remove('show');
+        });
+    });
+
+    $$('.start-item[data-action]').forEach(item => {
+        item.addEventListener('click', () => {
+            const action = item.dataset.action;
+            if (action === 'achievements') {
+                toast('Achievements', `You have unlocked ${achievements.length} achievements!`);
+            } else if (action === 'close-all') {
+                windows.slice().forEach(w => closeWindow(w.id));
+                toast('All Closed', 'All windows closed');
+            } else if (action === 'lock') {
+                logout();
+            }
+            startMenu.classList.remove('show');
+        });
+    });
+    
+    // Initialize taskbar buttons
+    const closeAllBtn = $('#close-all-btn');
+    const lockBtn = $('#lock-btn');
+    
+    if (closeAllBtn) {
+        closeAllBtn.addEventListener('click', () => {
+            windows.slice().forEach(w => closeWindow(w.id));
+            toast('All Closed', 'All windows closed');
+        });
+    }
+
+    if (lockBtn) {
+        lockBtn.addEventListener('click', () => {
+            logout();
+        });
+    }
     
     setTimeout(() => {
         toast('Welcome!', `Welcome to PeakOS Ultimate, ${currentUser.username}!`);
@@ -1516,10 +1584,37 @@ if (unlockTrigger) {
 // Start menu
 const startBtn = $('#start-btn');
 const startMenu = $('#start-menu');
+const startSearchInput = $('#start-search-input');
+
 if (startBtn) {
     startBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         startMenu.classList.toggle('show');
+        if (startMenu.classList.contains('show')) {
+            setTimeout(() => startSearchInput.focus(), 100);
+        }
+    });
+}
+
+// Search in start menu
+if (startSearchInput) {
+    startSearchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const allItems = $$('.start-item');
+        
+        if (query.length < 1) {
+            allItems.forEach(item => item.style.display = '');
+            return;
+        }
+        
+        allItems.forEach(item => {
+            const label = item.querySelector('.start-item-label').textContent.toLowerCase();
+            if (label.includes(query)) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+        });
     });
 }
 
@@ -1611,11 +1706,736 @@ if (widgetNotes) {
     });
 }
 
-// App opening
-const openApp = (appId) => {
-    toast('App Launched', `Opening ${appId}...`);
-    // App implementations would go here
+// Proxies and Games data
+let PROXIES = loadData('proxies', [
+    {id:'truffled', name:'Truffled', icon:'🔵', links:[
+        {t:'Link 1', u:'https://educational.radissontucson.com/'},
+        {t:'Link 2', u:'https://vacation.briaquaticcabinets.com/'}
+    ]},
+    {id:'overcloacked', name:'Overcloacked', icon:'⚡', links:[
+        {t:'Link 1', u:'https://d58o0iyi.beanweb.qzz.io.cdn.cloudflare.net/'}
+    ]},
+    {id:'fern', name:'Fern', icon:'🌿', links:[
+        {t:'Link 1', u:'https://apple1.vandrekalenderen.dk/'}
+    ]},
+    {id:'infamous', name:'Infamous', icon:'🔥', links:[
+        {t:'Link 1', u:'https://team-anti-drugs.acgcotton.com/'}
+    ]},
+    {id:'void', name:'Void', icon:'🌌', links:[
+        {t:'Link 1', u:'https://edu.ucecom-craiova.ro'}
+    ]}
+]);
+
+let GAMES = loadData('games', [
+    {id:'geometry-dash', icon:'🔺', name:'Geometry Dash', cat:'Rhythm', url:'https://rawcdn.githack.com/genizy/google-class/main/gdlite/index.html'},
+    {id:'draw-joust', icon:'⚔️', name:'Draw Joust', cat:'Action', url:'https://rawcdn.githack.com/genizy/brainrot/main/draw-joust/index.html'},
+    {id:'code-editor', icon:'💻', name:'Code Editor', cat:'Tools', url:'https://rawcdn.githack.com/genizy/code-editor/main/index.html'},
+    {id:'destroy-the-car-3d', icon:'🚗', name:'Destroy The Car 3D', cat:'Action', url:'https://cdn.jsdelivr.net/gh/genizy/brainrot@main/destroy-the-car-3d/'},
+    {id:'car-survival', icon:'🚗', name:'Car Survival 3D', cat:'Action', url:'https://rawcdn.githack.com/genizy/brainrot/main/car-survival-3d/index.html'},
+    {id:'city-defense', icon:'🏰', name:'City Defense 3D', cat:'Strategy', url:'https://rawcdn.githack.com/genizy/brainrot/main/city-defense/index.html'},
+    {id:'build-army', icon:'🪖', name:'Build a Big Army!', cat:'Strategy', url:'https://rawcdn.githack.com/genizy/brainrot/main/build-a-big-army/index.html'},
+    {id:'soundboard', icon:'🔊', name:'Soundboard', cat:'Tools', url:'https://rawcdn.githack.com/genizy/soundboard/main/index.html'},
+    {id:'fork-sausage', icon:'🍴', name:'Fork N Sausage', cat:'Action', url:'https://rawcdn.githack.com/bubbls/youtube-playables/main/fork-n-sausage/index.html'},
+    {id:'diamond-seeker', icon:'💎', name:'Diamond Seeker', cat:'Puzzle', url:'https://rawcdn.githack.com/genizy/brainrot/main/diamond-seeker/'},
+    {id:'elemental-masters', icon:'🔥', name:'Elemental Masters', cat:'Action', url:'https://cdn.jsdelivr.net/gh/genizy/brainrot@main/fire-and-frost-master/'},
+    {id:'flick-goal', icon:'⚽', name:'Flick Goal', cat:'Sports', url:'https://rawcdn.githack.com/genizy/brainrot/main/flick-goal/'},
+    {id:'gun-clone', icon:'🔫', name:'Gun Clone', cat:'Action', url:'https://rawcdn.githack.com/genizy/brainrot/main/gun-clone/'},
+    {id:'make-a-superboat', icon:'🚤', name:'Make a Superboat', cat:'Simulation', url:'https://rawcdn.githack.com/genizy/brainrot/main/make-a-superboat/'}
+]);
+
+let INSTALLED_APPS = loadData('installed_apps', []);
+let NOTES = loadData('notes', []);
+
+// Window management
+const createWindow = (title, icon, type, onContentReady) => {
+    const id = `win-${windowIdCounter++}`;
+    const win = document.createElement('div');
+    win.className = 'window';
+    win.id = id;
+    win.style.top = (window.innerHeight / 2 - 300) + 'px';
+    win.style.left = (window.innerWidth / 2 - 350) + 'px';
+    win.style.width = '700px';
+    win.style.height = '500px';
+    win.innerHTML = `
+        <div class="window-titlebar">
+            <div class="window-title">${icon} ${title}</div>
+            <div class="window-controls">
+                <button class="window-btn minimize" title="Minimize">−</button>
+                <button class="window-btn maximize" title="Maximize">□</button>
+                <button class="window-btn close" title="Close">✕</button>
+            </div>
+        </div>
+        <div class="tab-content active" id="content-${id}"></div>
+    `;
+    $('#windows-container').appendChild(win);
+    
+    // Make window draggable
+    if (typeof interact !== 'undefined') {
+        interact(win).draggable({
+            allowFrom: '.window-titlebar',
+            listeners: {
+                move(event) {
+                    const target = event.target;
+                    const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                    const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+                    
+                    target.style.left = `${parseFloat(target.style.left) + event.dx}px`;
+                    target.style.top = `${parseFloat(target.style.top) + event.dy}px`;
+                    
+                    target.setAttribute('data-x', x);
+                    target.setAttribute('data-y', y);
+                }
+            }
+        });
+    }
+    
+    win.querySelector('.close').addEventListener('click', () => closeWindow(id));
+    win.querySelector('.minimize').addEventListener('click', () => minimizeWindow(id));
+    win.querySelector('.maximize').addEventListener('click', () => toggleMaximize(id));
+    win.addEventListener('mousedown', () => focusWindow(id));
+    
+    windows.push({id, title, icon, type, minimized: false});
+    
+    setTimeout(() => {
+        win.classList.add('show');
+        focusWindow(id);
+        if (onContentReady) onContentReady($(`#content-${id}`));
+    }, 50);
+    
+    updateTaskbarWindows();
+    bindHover();
+    return id;
 };
+
+const closeWindow = (id) => {
+    const win = $(`#${id}`);
+    if (win) {
+        win.classList.remove('show');
+        setTimeout(() => win.remove(), 200);
+    }
+    windows = windows.filter(w => w.id !== id);
+    updateTaskbarWindows();
+};
+
+const minimizeWindow = (id) => {
+    const win = $(`#${id}`);
+    if (win) {
+        win.classList.add('minimized');
+        const winData = windows.find(w => w.id === id);
+        if (winData) winData.minimized = true;
+    }
+    updateTaskbarWindows();
+};
+
+const restoreWindow = (id) => {
+    const win = $(`#${id}`);
+    if (win) {
+        win.classList.remove('minimized');
+        const winData = windows.find(w => w.id === id);
+        if (winData) winData.minimized = false;
+        focusWindow(id);
+    }
+    updateTaskbarWindows();
+};
+
+const toggleMaximize = (id) => {
+    const win = $(`#${id}`);
+    if (win) win.classList.toggle('maximized');
+};
+
+const focusWindow = (id) => {
+    $$('.window').forEach(w => w.style.zIndex = 100);
+    const win = $(`#${id}`);
+    if (win) win.style.zIndex = 101;
+    activeWindowId = id;
+    updateTaskbarWindows();
+};
+
+const updateTaskbarWindows = () => {
+    const container = $('#taskbar-windows');
+    if (!container) return;
+    container.innerHTML = windows.map(w => `
+        <div class="taskbar-window-btn ${w.id === activeWindowId && !w.minimized ? 'active' : ''}" data-id="${w.id}">
+            <div class="taskbar-window-icon">${w.icon}</div>
+            <div class="taskbar-window-title">${w.title}</div>
+            <button class="taskbar-close-btn" data-id="${w.id}">✕</button>
+        </div>
+    `).join('');
+    
+    $$('.taskbar-window-btn').forEach(btn => {
+        const id = btn.dataset.id;
+        btn.addEventListener('click', (e) => {
+            if (e.target.classList.contains('taskbar-close-btn')) return;
+            const winData = windows.find(w => w.id === id);
+            if (winData && winData.minimized) {
+                restoreWindow(id);
+            } else {
+                focusWindow(id);
+            }
+        });
+    });
+    
+    $$('.taskbar-close-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeWindow(btn.dataset.id);
+        });
+    });
+    
+    bindHover();
+};
+
+// App opening functions
+const openApp = (appId) => {
+    switch(appId) {
+        case 'dashboard': openDashboardApp(); break;
+        case 'proxy-installer': openProxyInstaller(); break;
+        case 'game-installer': openGameInstaller(); break;
+        case 'browser': openBrowserApp(); break;
+        case 'music': openMusicApp(); break;
+        case 'terminal': openTerminalApp(); break;
+        case 'task-manager': openTaskManagerApp(); break;
+        case 'files': openFilesApp(); break;
+        case 'calculator': openCalculatorApp(); break;
+        case 'notes': openNotesApp(); break;
+        case 'styles': openStylesApp(); break;
+        case 'settings': openSettingsApp(); break;
+    }
+};
+
+const openDashboardApp = () => {
+    createWindow('Dashboard', '📊', 'dashboard', (content) => {
+        content.innerHTML = `
+            <div class="content-grid">
+                <div class="grid-header">
+                    <div>
+                        <div class="grid-title">Dashboard</div>
+                        <div class="grid-subtitle">Welcome to PeakOS Ultimate, ${currentUser ? currentUser.username : 'User'}!</div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin: 40px 0;">
+                    <div class="item-card" onclick="openApp('proxy-installer')">
+                        <div class="item-header">
+                            <div class="item-icon">🌐</div>
+                            <div class="item-content">
+                                <div class="item-name">Proxy Installer</div>
+                                <div class="item-desc">${PROXIES.length} proxies available</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="item-card" onclick="openApp('game-installer')">
+                        <div class="item-header">
+                            <div class="item-icon">🎮</div>
+                            <div class="item-content">
+                                <div class="item-name">Game Installer</div>
+                                <div class="item-desc">${GAMES.length} games available</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="item-card" onclick="openApp('notes')">
+                        <div class="item-header">
+                            <div class="item-icon">📝</div>
+                            <div class="item-content">
+                                <div class="item-name">Notes</div>
+                                <div class="item-desc">${NOTES.length} saved notes</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="item-card" onclick="openApp('music')">
+                        <div class="item-header">
+                            <div class="item-icon">🎵</div>
+                            <div class="item-content">
+                                <div class="item-name">Music Player</div>
+                                <div class="item-desc">Listen to music</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="item-card" onclick="openApp('terminal')">
+                        <div class="item-header">
+                            <div class="item-icon">💻</div>
+                            <div class="item-content">
+                                <div class="item-name">Terminal</div>
+                                <div class="item-desc">Run commands</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="item-card" onclick="openApp('browser')">
+                        <div class="item-header">
+                            <div class="item-icon">🌍</div>
+                            <div class="item-content">
+                                <div class="item-name">Browser</div>
+                                <div class="item-desc">Surf the web</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+const openProxyInstaller = () => {
+    createWindow('Proxy Installer', '🌐', 'proxy-installer', (content) => {
+        content.innerHTML = `
+            <div class="content-grid">
+                <div class="grid-header">
+                    <div>
+                        <div class="grid-title">Proxy Installer</div>
+                        <div class="grid-subtitle">${PROXIES.length} secure proxies</div>
+                    </div>
+                </div>
+                <div class="item-grid">
+                    ${PROXIES.map(p => `
+                        <div class="item-card">
+                            <div class="item-header">
+                                <div class="item-icon">${p.icon}</div>
+                                <div class="item-content">
+                                    <div class="item-name">${p.name}</div>
+                                    <div class="item-desc">${p.links.length} link${p.links.length>1?'s':''}</div>
+                                </div>
+                            </div>
+                            <div class="item-actions">
+                                ${p.links.map((link, index) => `
+                                    <button class="grid-btn" style="font-size: 11px; padding: 8px 12px;" 
+                                            onclick="window.open('${link.u}', '_blank')">
+                                        Link ${index + 1}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+const openGameInstaller = () => {
+    createWindow('Game Installer', '🎮', 'game-installer', (content) => {
+        content.innerHTML = `
+            <div class="content-grid">
+                <div class="grid-header">
+                    <div>
+                        <div class="grid-title">Game Installer</div>
+                        <div class="grid-subtitle">${GAMES.length} games available</div>
+                    </div>
+                </div>
+                <div class="item-grid">
+                    ${GAMES.map(g => `
+                        <div class="item-card">
+                            <div class="item-header">
+                                <div class="item-icon">${g.icon}</div>
+                                <div class="item-content">
+                                    <div class="item-name">${g.name}</div>
+                                    <div class="item-desc">${g.cat}</div>
+                                </div>
+                            </div>
+                            <div class="item-actions">
+                                <button class="grid-btn primary" style="font-size: 11px; padding: 8px 12px;"
+                                        onclick="window.open('${g.url}', '_blank')">
+                                    🎮 Play
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+const openBrowserApp = () => {
+    createWindow('Browser', '🌍', 'browser', (content) => {
+        content.innerHTML = `
+            <div style="display: flex; flex-direction: column; height: 100%;">
+                <div style="padding: 12px; background: var(--bg3); border-bottom: 1px solid var(--border); display: flex; gap: 8px;">
+                    <button class="grid-btn" style="padding: 8px 12px;" onclick="document.getElementById('browser-frame').src = document.getElementById('browser-url').value">Go</button>
+                    <input type="text" id="browser-url" placeholder="Enter URL..." value="https://google.com" 
+                           style="flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--txt); font-size: 13px;">
+                    <button class="grid-btn" style="padding: 8px 12px;" onclick="document.getElementById('browser-frame').contentWindow.location.reload()">↻</button>
+                </div>
+                <iframe id="browser-frame" src="https://google.com" style="flex: 1; border: none; background: white;"></iframe>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+const openMusicApp = () => {
+    createWindow('Music Player', '🎵', 'music', (content) => {
+        content.innerHTML = `
+            <div class="music-player">
+                <div class="music-album">
+                    <div class="music-album-art">🎵</div>
+                </div>
+                <div class="music-controls">
+                    <div class="music-info">
+                        <div class="music-title">Lofi Beats</div>
+                        <div class="music-artist">PeakOS Radio</div>
+                    </div>
+                    <div class="music-progress">
+                        <div class="music-progress-fill" style="width: 45%;"></div>
+                    </div>
+                    <div class="music-buttons">
+                        <button class="music-btn">⏮</button>
+                        <button class="music-btn play">▶</button>
+                        <button class="music-btn">⏭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+const openTerminalApp = () => {
+    createWindow('Terminal', '💻', 'terminal', (content) => {
+        content.innerHTML = `
+            <div class="terminal-content" id="terminal-content">
+                <div class="terminal-line">PeakOS Terminal v4.0</div>
+                <div class="terminal-line">Type 'help' for available commands</div>
+                <div class="terminal-line">&nbsp;</div>
+                <div class="terminal-input-line">
+                    <span class="terminal-prompt">${currentUser ? currentUser.username : 'user'}@peakos:~$</span>
+                    <input type="text" class="terminal-input" id="terminal-input" autofocus>
+                </div>
+            </div>
+        `;
+        
+        const terminalInput = content.querySelector('#terminal-input');
+        const terminalContent = content.querySelector('#terminal-content');
+        
+        terminalInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const cmd = terminalInput.value.trim();
+                const outputLine = document.createElement('div');
+                outputLine.className = 'terminal-line';
+                outputLine.innerHTML = `<span class="terminal-prompt">${currentUser ? currentUser.username : 'user'}@peakos:~$</span> ${cmd}`;
+                
+                const inputLine = terminalContent.querySelector('.terminal-input-line');
+                terminalContent.insertBefore(outputLine, inputLine);
+                
+                const resultLine = document.createElement('div');
+                resultLine.className = 'terminal-line';
+                
+                if (cmd === 'help') {
+                    resultLine.textContent = 'Available commands: help, clear, date, whoami, echo, neofetch';
+                } else if (cmd === 'clear') {
+                    $$('.terminal-line').forEach(line => {
+                        if (!line.classList.contains('terminal-input-line')) line.remove();
+                    });
+                    terminalInput.value = '';
+                    return;
+                } else if (cmd === 'date') {
+                    resultLine.textContent = new Date().toString();
+                } else if (cmd === 'whoami') {
+                    resultLine.textContent = currentUser ? currentUser.username : 'user';
+                } else if (cmd.startsWith('echo ')) {
+                    resultLine.textContent = cmd.substring(5);
+                } else if (cmd === 'neofetch') {
+                    resultLine.innerHTML = `
+                        ▲<br>
+                       ▲ ▲    OS: PeakOS Ultimate v4.0<br>
+                      ▲   ▲   User: ${currentUser ? currentUser.username : 'user'}<br>
+                     ▲▲▲▲▲▲▲  Shell: PeakShell<br>
+                              Theme: ${settings.theme}
+                    `;
+                } else if (cmd) {
+                    resultLine.textContent = `Command not found: ${cmd}`;
+                }
+                
+                if (cmd !== 'clear') {
+                    terminalContent.insertBefore(resultLine, inputLine);
+                }
+                
+                terminalInput.value = '';
+                terminalContent.scrollTop = terminalContent.scrollHeight;
+            }
+        });
+        
+        bindHover();
+    });
+};
+
+const openTaskManagerApp = () => {
+    createWindow('Task Manager', '📈', 'task-manager', (content) => {
+        content.innerHTML = `
+            <div class="content-grid">
+                <div class="grid-header">
+                    <div>
+                        <div class="grid-title">Task Manager</div>
+                        <div class="grid-subtitle">System processes and performance</div>
+                    </div>
+                </div>
+                <div style="margin-top: 30px;">
+                    <h3 style="font-size: 16px; font-weight: 700; color: var(--txt); margin-bottom: 16px;">Running Applications</h3>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        ${windows.map(w => `
+                            <div class="item-card" style="flex-direction: row; align-items: center; padding: 16px;">
+                                <div style="font-size: 24px; margin-right: 16px;">${w.icon}</div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; color: var(--txt);">${w.title}</div>
+                                    <div style="font-size: 12px; color: var(--txt2); margin-top: 4px;">Process ID: ${w.id}</div>
+                                </div>
+                                <button class="grid-btn" onclick="closeWindow('${w.id}')" style="font-size: 12px; padding: 8px 16px;">End Task</button>
+                            </div>
+                        `).join('')}
+                        ${windows.length === 0 ? '<div style="padding: 40px; text-align: center; color: var(--txt2);">No applications running</div>' : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+const openFilesApp = () => {
+    createWindow('File Manager', '📁', 'files', (content) => {
+        content.innerHTML = `
+            <div class="content-grid">
+                <div class="grid-header">
+                    <div>
+                        <div class="grid-title">File Manager</div>
+                        <div class="grid-subtitle">Browse your files</div>
+                    </div>
+                </div>
+                <div style="padding: 60px; text-align: center; color: var(--txt2);">
+                    <div style="font-size: 64px; margin-bottom: 20px;">📁</div>
+                    <div style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">No Files Yet</div>
+                    <div style="font-size: 14px;">File management coming soon!</div>
+                </div>
+            </div>
+        `;
+    });
+};
+
+const openCalculatorApp = () => {
+    createWindow('Calculator', '🔢', 'calculator', (content) => {
+        content.innerHTML = `
+            <div style="display: flex; flex-direction: column; height: 100%; background: var(--bg); padding: 24px;">
+                <div style="background: var(--bg3); border-radius: 14px; padding: 24px; margin-bottom: 20px; text-align: right; font-size: 36px; font-family: 'Fira Code', monospace; color: var(--txt); min-height: 80px; display: flex; align-items: center; justify-content: flex-end; border: 2px solid var(--border);" id="calc-display">0</div>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; flex: 1;">
+                    ${['C', '←', '%', '÷', '7', '8', '9', '×', '4', '5', '6', '-', '1', '2', '3', '+', '0', '.', '='].map(btn => `
+                        <button class="grid-btn" style="font-size: 20px; min-height: 60px; ${btn==='='?'grid-column: span 2;':''}" onclick="calcBtn('${btn}')">${btn}</button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+let calcValue = '0';
+let calcOperator = null;
+let calcPrevValue = null;
+
+window.calcBtn = (btn) => {
+    const display = $('#calc-display');
+    if (!display) return;
+    
+    if (btn === 'C') {
+        calcValue = '0';
+        calcOperator = null;
+        calcPrevValue = null;
+    } else if (btn === '←') {
+        calcValue = calcValue.slice(0, -1) || '0';
+    } else if (['+', '-', '×', '÷', '%'].includes(btn)) {
+        calcOperator = btn;
+        calcPrevValue = parseFloat(calcValue);
+        calcValue = '0';
+    } else if (btn === '=') {
+        if (calcOperator && calcPrevValue !== null) {
+            const current = parseFloat(calcValue);
+            let result = 0;
+            switch(calcOperator) {
+                case '+': result = calcPrevValue + current; break;
+                case '-': result = calcPrevValue - current; break;
+                case '×': result = calcPrevValue * current; break;
+                case '÷': result = calcPrevValue / current; break;
+                case '%': result = calcPrevValue % current; break;
+            }
+            calcValue = result.toString();
+            calcOperator = null;
+            calcPrevValue = null;
+        }
+    } else {
+        if (calcValue === '0' && btn !== '.') {
+            calcValue = btn;
+        } else {
+            calcValue += btn;
+        }
+    }
+    
+    display.textContent = calcValue;
+};
+
+const openNotesApp = () => {
+    createWindow('Notes', '📝', 'notes', (content) => {
+        content.innerHTML = `
+            <div style="display: flex; height: 100%;">
+                <div style="width: 250px; background: var(--bg3); border-right: 1px solid var(--border); display: flex; flex-direction: column;">
+                    <div style="padding: 20px; border-bottom: 1px solid var(--border);">
+                        <button class="grid-btn primary" style="width: 100%;" onclick="createNote()">📝 New Note</button>
+                    </div>
+                    <div style="flex: 1; overflow-y: auto; padding: 12px;" id="notes-list">
+                        ${NOTES.length === 0 ? '<div style="padding: 20px; text-align: center; color: var(--txt2); font-size: 13px;">No notes yet</div>' : 
+                        NOTES.map((note, i) => `
+                            <div class="item-card" style="margin-bottom: 8px; padding: 12px; cursor: pointer;" onclick="openNote(${i})">
+                                <div style="font-size: 13px; font-weight: 600; color: var(--txt); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${note.title || 'Untitled'}</div>
+                                <div style="font-size: 11px; color: var(--txt2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${note.content.substring(0, 50)}...</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column; padding: 24px;">
+                    <input type="text" id="note-title" placeholder="Note title..." style="background: var(--bg3); border: 2px solid var(--border); border-radius: 10px; padding: 14px; font-size: 18px; font-weight: 600; color: var(--txt); margin-bottom: 16px; font-family: 'Inter', sans-serif;">
+                    <textarea id="note-content" placeholder="Start typing your note..." style="flex: 1; background: var(--bg3); border: 2px solid var(--border); border-radius: 10px; padding: 14px; font-size: 14px; color: var(--txt); resize: none; font-family: 'Inter', sans-serif; line-height: 1.6;"></textarea>
+                    <button class="grid-btn primary" style="margin-top: 16px;" onclick="saveNote()">💾 Save Note</button>
+                </div>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+let currentNoteIndex = null;
+
+window.createNote = () => {
+    currentNoteIndex = null;
+    $('#note-title').value = '';
+    $('#note-content').value = '';
+    toast('New Note', 'Creating new note');
+};
+
+window.openNote = (index) => {
+    currentNoteIndex = index;
+    const note = NOTES[index];
+    $('#note-title').value = note.title;
+    $('#note-content').value = note.content;
+};
+
+window.saveNote = () => {
+    const title = $('#note-title').value.trim() || 'Untitled';
+    const content = $('#note-content').value.trim();
+    
+    if (!content) {
+        toast('Error', 'Note content cannot be empty', 'error');
+        return;
+    }
+    
+    const note = { title, content, date: new Date().toISOString() };
+    
+    if (currentNoteIndex !== null) {
+        NOTES[currentNoteIndex] = note;
+        toast('Note Updated', 'Your note has been updated');
+    } else {
+        NOTES.push(note);
+        toast('Note Saved', 'Your note has been saved');
+    }
+    
+    saveData('notes', NOTES);
+    
+    const notesList = $('#notes-list');
+    if (notesList) {
+        notesList.innerHTML = NOTES.map((note, i) => `
+            <div class="item-card" style="margin-bottom: 8px; padding: 12px; cursor: pointer;" onclick="openNote(${i})">
+                <div style="font-size: 13px; font-weight: 600; color: var(--txt); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${note.title || 'Untitled'}</div>
+                <div style="font-size: 11px; color: var(--txt2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${note.content.substring(0, 50)}...</div>
+            </div>
+        `).join('');
+        bindHover();
+    }
+};
+
+const openStylesApp = () => {
+    createWindow('Styles', '🎨', 'styles', (content) => {
+        content.innerHTML = `
+            <div style="flex: 1; overflow-y: auto; padding: 24px;">
+                <div style="margin-bottom: 32px;">
+                    <div style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--txt2); margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border);">🎨 Themes</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px;">
+                        ${['midnight', 'neon', 'aurora', 'sunset', 'cyber', 'matrix', 'space', 'ocean', 'fire', 'forest'].map(t => `
+                            <div class="item-card ${settings.theme===t?'active':''}" data-theme="${t}" 
+                                 style="aspect-ratio: 16/9; cursor: pointer; padding: 0; position: relative; overflow: hidden;">
+                                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 36px; background: linear-gradient(135deg, var(--bg), var(--bg3));"></div>
+                                <div style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.9); padding: 10px; font-size: 12px; font-weight: 600; text-align: center;">${t.charAt(0).toUpperCase()+t.slice(1)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $$('[data-theme]').forEach(card => {
+            card.addEventListener('click', () => {
+                const theme = card.dataset.theme;
+                settings.theme = theme;
+                saveData('settings', settings);
+                document.body.className = document.body.className.replace(/theme-\w+/g, '');
+                document.body.classList.add(`theme-${theme}`);
+                toast('Theme Changed', `Switched to ${theme} theme`);
+            });
+        });
+        
+        bindHover();
+    });
+};
+
+const openSettingsApp = () => {
+    createWindow('Settings', '⚙️', 'settings', (content) => {
+        content.innerHTML = `
+            <div style="flex: 1; overflow-y: auto; padding: 24px;">
+                <div style="margin-bottom: 32px;">
+                    <div style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--txt2); margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border);">⚙️ System Settings</div>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        ${[
+                            {id:'cursor', label:'Custom Cursor', desc:'Enable/disable custom cursor'},
+                            {id:'animations', label:'Animations', desc:'Enable/disable UI animations'},
+                            {id:'notifications', label:'Notifications', desc:'Show toast notifications'}
+                        ].map(setting => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;">
+                                <div>
+                                    <h4 style="font-size: 13px; font-weight: 600; color: var(--txt);">${setting.label}</h4>
+                                    <p style="font-size: 11px; color: var(--txt2); margin-top: 3px;">${setting.desc}</p>
+                                </div>
+                                <input type="checkbox" id="setting-${setting.id}" ${settings[setting.id]?'checked':''} 
+                                       onchange="toggleSetting('${setting.id}', this.checked)"
+                                       style="width: 40px; height: 20px; cursor: pointer;">
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div style="padding: 20px; background: var(--bg3); border-radius: 14px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">👤</div>
+                    <div style="font-size: 18px; font-weight: 700; color: var(--txt); margin-bottom: 8px;">
+                        ${currentUser ? currentUser.username : 'User'}
+                    </div>
+                    <div style="font-size: 13px; color: var(--txt2);">PeakOS Account</div>
+                    <button class="grid-btn" style="margin-top: 20px; width: 100%;" onclick="logout()">
+                        🔓 Logout
+                    </button>
+                </div>
+            </div>
+        `;
+        bindHover();
+    });
+};
+
+window.toggleSetting = (setting, value) => {
+    settings[setting] = value;
+    saveData('settings', settings);
+    toast('Setting Updated', `${setting} ${value?'enabled':'disabled'}`);
+};
+
+window.logout = () => {
+    saveData('currentUser', null);
+    location.reload();
+};
+
+window.closeWindow = closeWindow;
 
 // Desktop icon clicks
 $$('.desktop-icon[data-app]').forEach(icon => {
@@ -1673,6 +2493,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 2500);
 });
+
+// Expose functions globally
+window.openApp = openApp;
+window.closeWindow = closeWindow;
+window.removeWidget = (widgetId) => {
+    const widget = $('#' + widgetId);
+    if (widget) {
+        widget.style.opacity = '0';
+        widget.style.transform = 'translateY(20px)';
+        setTimeout(() => widget.remove(), 300);
+    }
+};
+window.clearNotifications = clearNotifications;
+window.toggleQSSetting = toggleQSSetting;
+window.contextAction = contextAction;
+window.calcBtn = calcBtn;
+window.createNote = createNote;
+window.openNote = openNote;
+window.saveNote = saveNote;
+window.toggleSetting = toggleSetting;
+window.logout = logout;
     </script>
+</body>
+</html>
 </body>
 </html>
